@@ -15,6 +15,7 @@ interface DevUser {
 
 export function DevLogin() {
   const queryClient = useQueryClient();
+  const [loggingInUserId, setLoggingInUserId] = useState<string | null>(null);
   
   // Get available dev users
   const { data: devUsers, isLoading } = useQuery<DevUser[]>({
@@ -24,12 +25,14 @@ export function DevLogin() {
   // Login mutation
   const loginMutation = useMutation({
     mutationFn: async (userId: string) => {
+      setLoggingInUserId(userId);
       const response = await fetch('/api/dev/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ userId }),
+        credentials: 'include',
       });
       if (!response.ok) {
         throw new Error('Login failed');
@@ -41,6 +44,9 @@ export function DevLogin() {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
       // Refresh the page to update auth state
       window.location.reload();
+    },
+    onError: () => {
+      setLoggingInUserId(null);
     },
   });
 
@@ -101,10 +107,10 @@ export function DevLogin() {
                     </div>
                     <Button
                       onClick={() => loginMutation.mutate(user.id)}
-                      disabled={loginMutation.isPending}
+                      disabled={loggingInUserId === user.id}
                       data-testid={`login-${user.role}`}
                     >
-                      {loginMutation.isPending ? "Logging in..." : "Login"}
+                      {loggingInUserId === user.id ? "Logging in..." : "Login"}
                     </Button>
                   </div>
                 </CardContent>
