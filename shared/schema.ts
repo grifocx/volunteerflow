@@ -25,6 +25,14 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
+// Enums
+export const userRoleEnum = pgEnum('user_role', [
+  'recruiter',
+  'placement_officer', 
+  'medical_screener',
+  'country_officer'
+]);
+
 // User storage table for authentication
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -32,12 +40,12 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  role: varchar("role").default("recruitment_manager"),
+  role: userRoleEnum("role").default("recruiter"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Enums
+// More Enums
 export const statusEnum = pgEnum('status', [
   'interested',
   'applied',
@@ -143,8 +151,22 @@ export const medicalScreenings = pgTable("medical_screenings", {
   mentalHealthClearance: boolean("mental_health_clearance").default(false),
   backgroundCheck: boolean("background_check").default(false),
   emergencyContact: jsonb("emergency_contact"),
-  medicalNotes: text("medical_notes"),
-  documents: text("documents").array(), // URLs to uploaded documents
+  // Country-specific medical clearances (visible to all roles)
+  countryRestrictions: text("country_restrictions").array(), // Countries where volunteer cannot be placed
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sensitive medical details - only accessible to medical screeners
+export const medicalScreeningDetails = pgTable("medical_screening_details", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  medicalScreeningId: varchar("medical_screening_id").notNull().references(() => medicalScreenings.id),
+  medicalNotes: text("medical_notes"), // Detailed medical notes
+  rejectionReasons: text("rejection_reasons"), // Why clearance was denied
+  mentalHealthNotes: text("mental_health_notes"),
+  backgroundCheckNotes: text("background_check_notes"),
+  vaccinationRecords: jsonb("vaccination_records"),
+  documents: text("documents").array(), // URLs to uploaded medical documents
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -204,10 +226,18 @@ export const applicationsRelations = relations(applications, ({ one, many }) => 
   activities: many(activities),
 }));
 
-export const medicalScreeningsRelations = relations(medicalScreenings, ({ one }) => ({
+export const medicalScreeningsRelations = relations(medicalScreenings, ({ one, many }) => ({
   volunteer: one(volunteers, {
     fields: [medicalScreenings.volunteerId],
     references: [volunteers.id],
+  }),
+  details: many(medicalScreeningDetails),
+}));
+
+export const medicalScreeningDetailsRelations = relations(medicalScreeningDetails, ({ one }) => ({
+  medicalScreening: one(medicalScreenings, {
+    fields: [medicalScreeningDetails.medicalScreeningId],
+    references: [medicalScreenings.id],
   }),
 }));
 
@@ -267,6 +297,12 @@ export const insertMedicalScreeningSchema = createInsertSchema(medicalScreenings
   updatedAt: true,
 });
 
+export const insertMedicalScreeningDetailsSchema = createInsertSchema(medicalScreeningDetails).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertPlacementSchema = createInsertSchema(placements).omit({
   id: true,
   createdAt: true,
@@ -285,6 +321,7 @@ export type Volunteer = typeof volunteers.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type Application = typeof applications.$inferSelect;
 export type MedicalScreening = typeof medicalScreenings.$inferSelect;
+export type MedicalScreeningDetails = typeof medicalScreeningDetails.$inferSelect;
 export type Placement = typeof placements.$inferSelect;
 export type Activity = typeof activities.$inferSelect;
 
@@ -292,6 +329,7 @@ export type InsertVolunteer = z.infer<typeof insertVolunteerSchema>;
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
 export type InsertMedicalScreening = z.infer<typeof insertMedicalScreeningSchema>;
+export type InsertMedicalScreeningDetails = z.infer<typeof insertMedicalScreeningDetailsSchema>;
 export type InsertPlacement = z.infer<typeof insertPlacementSchema>;
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 

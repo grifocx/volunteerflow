@@ -34,19 +34,6 @@ export default function Dashboard() {
   const { data: metrics, isLoading: metricsLoading } = useQuery({
     queryKey: ["/api/dashboard/metrics"],
     retry: false,
-    onError: (error: Error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-    }
   });
 
   const { data: urgentItems, isLoading: urgentLoading } = useQuery({
@@ -87,7 +74,7 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : (
-              <MetricsCards metrics={metrics} />
+              <MetricsCards metrics={metrics as any} />
             )}
           </div>
 
@@ -104,7 +91,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <PipelineFunnel pipelineStages={metrics?.pipelineStages || []} />
+                <PipelineFunnel pipelineStages={(metrics as any)?.pipelineStages || []} />
               )}
             </div>
             
@@ -119,7 +106,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <RecentActivity activities={activities || []} />
+                <RecentActivity activities={(activities as any) || []} />
               )}
             </div>
           </div>
@@ -138,7 +125,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <UrgentItems urgentItems={urgentItems || []} />
+                <UrgentItems urgentItems={(urgentItems as any) || []} />
               )}
             </div>
           </div>
@@ -155,7 +142,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              <SectorsOverview sectorStats={metrics?.sectorStats || []} />
+              <SectorsOverview sectorStats={(metrics as any)?.sectorStats || []} />
             )}
           </div>
         </main>

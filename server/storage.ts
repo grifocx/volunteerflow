@@ -4,6 +4,7 @@ import {
   positions,
   applications,
   medicalScreenings,
+  medicalScreeningDetails,
   placements,
   activities,
   type User,
@@ -12,12 +13,14 @@ import {
   type Position,
   type Application,
   type MedicalScreening,
+  type MedicalScreeningDetails,
   type Placement,
   type Activity,
   type InsertVolunteer,
   type InsertPosition,
   type InsertApplication,
   type InsertMedicalScreening,
+  type InsertMedicalScreeningDetails,
   type InsertPlacement,
   type InsertActivity,
   type VolunteerWithRelations,
@@ -82,6 +85,11 @@ export interface IStorage {
   getMedicalScreening(id: string): Promise<MedicalScreening | undefined>;
   createMedicalScreening(screening: InsertMedicalScreening): Promise<MedicalScreening>;
   updateMedicalScreening(id: string, screening: Partial<InsertMedicalScreening>): Promise<MedicalScreening>;
+
+  // Medical screening details operations (restricted access)
+  getMedicalScreeningDetails(medicalScreeningId: string): Promise<MedicalScreeningDetails | undefined>;
+  createMedicalScreeningDetails(details: InsertMedicalScreeningDetails): Promise<MedicalScreeningDetails>;
+  updateMedicalScreeningDetails(id: string, details: Partial<InsertMedicalScreeningDetails>): Promise<MedicalScreeningDetails>;
   
   // Placement operations
   getPlacements(filters?: {
@@ -494,6 +502,35 @@ export class DatabaseStorage implements IStorage {
       .update(medicalScreenings)
       .set({ ...screening, updatedAt: new Date() })
       .where(eq(medicalScreenings.id, id))
+      .returning();
+    
+    return updated;
+  }
+
+  // Medical screening details operations (restricted access)
+  async getMedicalScreeningDetails(medicalScreeningId: string): Promise<MedicalScreeningDetails | undefined> {
+    const [details] = await db
+      .select()
+      .from(medicalScreeningDetails)
+      .where(eq(medicalScreeningDetails.medicalScreeningId, medicalScreeningId));
+    
+    return details;
+  }
+
+  async createMedicalScreeningDetails(details: InsertMedicalScreeningDetails): Promise<MedicalScreeningDetails> {
+    const [newDetails] = await db
+      .insert(medicalScreeningDetails)
+      .values(details)
+      .returning();
+    
+    return newDetails;
+  }
+
+  async updateMedicalScreeningDetails(id: string, details: Partial<InsertMedicalScreeningDetails>): Promise<MedicalScreeningDetails> {
+    const [updated] = await db
+      .update(medicalScreeningDetails)
+      .set({ ...details, updatedAt: new Date() })
+      .where(eq(medicalScreeningDetails.id, id))
       .returning();
     
     return updated;

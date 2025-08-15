@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { getRoleDisplayName } from "@/lib/rbac";
 import { 
   Users, 
   ChartLine, 
@@ -13,19 +14,24 @@ import {
   LogOut 
 } from "lucide-react";
 
-const navigation = [
-  { name: 'Dashboard', href: '/', icon: ChartLine },
-  { name: 'Lead Management', href: '/leads', icon: UserPlus },
-  { name: 'Positions', href: '/positions', icon: Briefcase },
-  { name: 'Applications', href: '/applications', icon: ClipboardList },
-  { name: 'Medical Screening', href: '/medical-screening', icon: UserCheck },
-  { name: 'Placements', href: '/placements', icon: MapPin },
-  { name: 'Reports', href: '/reports', icon: BarChart3 },
+const allNavigation = [
+  { name: 'Dashboard', href: '/', icon: ChartLine, permission: null },
+  { name: 'Lead Management', href: '/leads', icon: UserPlus, permission: 'canViewLeads' as const },
+  { name: 'Positions', href: '/positions', icon: Briefcase, permission: 'canViewPositions' as const },
+  { name: 'Applications', href: '/applications', icon: ClipboardList, permission: 'canViewApplications' as const },
+  { name: 'Medical Screening', href: '/medical-screening', icon: UserCheck, permission: 'canViewMedicalScreenings' as const },
+  { name: 'Placements', href: '/placements', icon: MapPin, permission: 'canViewPlacements' as const },
+  { name: 'Reports', href: '/reports', icon: BarChart3, permission: 'canViewReports' as const },
 ];
 
 export default function Sidebar() {
   const [location] = useLocation();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+
+  // Filter navigation based on user permissions
+  const navigation = allNavigation.filter(item => 
+    item.permission === null || hasPermission(item.permission)
+  );
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -91,7 +97,7 @@ export default function Sidebar() {
                   }
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400" data-testid="user-role">
-                  {user?.role || 'Recruitment Manager'}
+                  {user?.role ? getRoleDisplayName(user.role as any) : 'User'}
                 </p>
               </div>
             </div>

@@ -53,7 +53,7 @@ export default function RecentActivity({ activities }: RecentActivityProps) {
                     {activity.description}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400" data-testid={`activity-time-${activity.id}`}>
-                    {formatTimeAgo(activity.createdAt)}
+                    {activity.createdAt ? formatTimeAgo(activity.createdAt) : 'Just now'}
                   </p>
                 </div>
               </div>
