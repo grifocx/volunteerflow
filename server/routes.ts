@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupDevAuth, isAuthenticatedDev } from "./devAuth";
 import { requirePermission, requireRole } from "./rbacMiddleware";
 import {
   insertVolunteerSchema,
@@ -15,9 +16,16 @@ import { z } from "zod";
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
+  
+  // Development auth (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    setupDevAuth(app);
+  }
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  // Auth routes - use dev auth in development, real auth in production
+  const authMiddleware = process.env.NODE_ENV === 'development' ? isAuthenticatedDev : isAuthenticated;
+  
+  app.get('/api/auth/user', authMiddleware, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -29,7 +37,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard routes
-  app.get('/api/dashboard/metrics', isAuthenticated, async (req, res) => {
+  app.get('/api/dashboard/metrics', authMiddleware, async (req, res) => {
     try {
       const metrics = await storage.getDashboardMetrics();
       res.json(metrics);
@@ -39,7 +47,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/dashboard/urgent-items', isAuthenticated, async (req, res) => {
+  app.get('/api/dashboard/urgent-items', authMiddleware, async (req, res) => {
     try {
       const urgentItems = await storage.getUrgentItems();
       res.json(urgentItems);
@@ -49,7 +57,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/dashboard/recent-activities', isAuthenticated, async (req, res) => {
+  app.get('/api/dashboard/recent-activities', authMiddleware, async (req, res) => {
     try {
       const activities = await storage.getActivities({ limit: 10 });
       res.json(activities);
@@ -60,7 +68,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Volunteer routes - restricted by permissions
-  app.get('/api/volunteers', isAuthenticated, requirePermission('canViewLeads'), async (req, res) => {
+  app.get('/api/volunteers', authMiddleware, requirePermission('canViewLeads'), async (req, res) => {
     try {
       const { status, search, limit, offset } = req.query;
       const volunteers = await storage.getVolunteers({
@@ -76,7 +84,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/volunteers/:id', isAuthenticated, async (req, res) => {
+  app.get('/api/volunteers/:id', authMiddleware, async (req, res) => {
     try {
       const volunteer = await storage.getVolunteer(req.params.id);
       if (!volunteer) {
@@ -89,7 +97,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/volunteers', isAuthenticated, requirePermission('canManageLeads'), async (req, res) => {
+  app.post('/api/volunteers', authMiddleware, requirePermission('canManageLeads'), async (req, res) => {
     try {
       const validatedData = insertVolunteerSchema.parse(req.body);
       const volunteer = await storage.createVolunteer(validatedData);
@@ -103,7 +111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/volunteers/:id', isAuthenticated, async (req, res) => {
+  app.patch('/api/volunteers/:id', authMiddleware, async (req, res) => {
     try {
       const validatedData = insertVolunteerSchema.partial().parse(req.body);
       const volunteer = await storage.updateVolunteer(req.params.id, validatedData);
@@ -117,7 +125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/volunteers/:id', isAuthenticated, async (req, res) => {
+  app.delete('/api/volunteers/:id', authMiddleware, async (req, res) => {
     try {
       const success = await storage.deleteVolunteer(req.params.id);
       if (!success) {
@@ -131,7 +139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Position routes - restricted by permissions
-  app.get('/api/positions', isAuthenticated, requirePermission('canViewPositions'), async (req, res) => {
+  app.get('/api/positions', authMiddleware, requirePermission('canViewPositions'), async (req, res) => {
     try {
       const { sector, country, isOpen, search, limit, offset } = req.query;
       const positions = await storage.getPositions({
@@ -149,7 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/positions/:id', isAuthenticated, async (req, res) => {
+  app.get('/api/positions/:id', authMiddleware, async (req, res) => {
     try {
       const position = await storage.getPosition(req.params.id);
       if (!position) {
@@ -162,7 +170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/positions', isAuthenticated, requirePermission('canManagePositions'), async (req, res) => {
+  app.post('/api/positions', authMiddleware, requirePermission('canManagePositions'), async (req, res) => {
     try {
       const validatedData = insertPositionSchema.parse(req.body);
       
@@ -184,7 +192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/positions/:id', isAuthenticated, async (req, res) => {
+  app.patch('/api/positions/:id', authMiddleware, async (req, res) => {
     try {
       const validatedData = insertPositionSchema.partial().parse(req.body);
       const position = await storage.updatePosition(req.params.id, validatedData);
@@ -198,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/positions/:id', isAuthenticated, async (req, res) => {
+  app.delete('/api/positions/:id', authMiddleware, async (req, res) => {
     try {
       const success = await storage.deletePosition(req.params.id);
       if (!success) {
@@ -212,7 +220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Application routes - restricted by permissions
-  app.get('/api/applications', isAuthenticated, requirePermission('canViewApplications'), async (req, res) => {
+  app.get('/api/applications', authMiddleware, requirePermission('canViewApplications'), async (req, res) => {
     try {
       const { volunteerId, positionId, status, limit, offset } = req.query;
       const applications = await storage.getApplications({
@@ -229,7 +237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/applications/:id', isAuthenticated, async (req, res) => {
+  app.get('/api/applications/:id', authMiddleware, async (req, res) => {
     try {
       const application = await storage.getApplication(req.params.id);
       if (!application) {
@@ -242,7 +250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/applications', isAuthenticated, requirePermission('canManageApplications'), async (req, res) => {
+  app.post('/api/applications', authMiddleware, requirePermission('canManageApplications'), async (req, res) => {
     try {
       const validatedData = insertApplicationSchema.parse(req.body);
       const application = await storage.createApplication(validatedData);
@@ -256,7 +264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/applications/:id', isAuthenticated, async (req, res) => {
+  app.patch('/api/applications/:id', authMiddleware, async (req, res) => {
     try {
       const validatedData = insertApplicationSchema.partial().parse(req.body);
       const application = await storage.updateApplication(req.params.id, validatedData);
@@ -271,7 +279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Medical screening routes - restricted by permissions
-  app.get('/api/medical-screenings', isAuthenticated, requirePermission('canViewMedicalScreenings'), async (req, res) => {
+  app.get('/api/medical-screenings', authMiddleware, requirePermission('canViewMedicalScreenings'), async (req, res) => {
     try {
       const { volunteerId, status } = req.query;
       const screenings = await storage.getMedicalScreenings({
@@ -285,7 +293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/medical-screenings/:id', isAuthenticated, async (req, res) => {
+  app.get('/api/medical-screenings/:id', authMiddleware, async (req, res) => {
     try {
       const screening = await storage.getMedicalScreening(req.params.id);
       if (!screening) {
@@ -298,7 +306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/medical-screenings', isAuthenticated, requirePermission('canManageMedicalScreenings'), async (req, res) => {
+  app.post('/api/medical-screenings', authMiddleware, requirePermission('canManageMedicalScreenings'), async (req, res) => {
     try {
       const validatedData = insertMedicalScreeningSchema.parse(req.body);
       const screening = await storage.createMedicalScreening(validatedData);
@@ -312,7 +320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/medical-screenings/:id', isAuthenticated, async (req, res) => {
+  app.patch('/api/medical-screenings/:id', authMiddleware, async (req, res) => {
     try {
       const validatedData = insertMedicalScreeningSchema.partial().parse(req.body);
       const screening = await storage.updateMedicalScreening(req.params.id, validatedData);
@@ -327,7 +335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Medical screening details routes - highly restricted (Medical Screeners only)
-  app.get('/api/medical-screenings/:id/details', isAuthenticated, requirePermission('canViewMedicalDetails'), async (req, res) => {
+  app.get('/api/medical-screenings/:id/details', authMiddleware, requirePermission('canViewMedicalDetails'), async (req, res) => {
     try {
       const details = await storage.getMedicalScreeningDetails(req.params.id);
       if (!details) {
@@ -340,7 +348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/medical-screenings/:id/details', isAuthenticated, requireRole('medical_screener'), async (req, res) => {
+  app.post('/api/medical-screenings/:id/details', authMiddleware, requireRole('medical_screener'), async (req, res) => {
     try {
       const details = await storage.createMedicalScreeningDetails({
         ...req.body,
@@ -354,7 +362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Placement routes - restricted by permissions
-  app.get('/api/placements', isAuthenticated, requirePermission('canViewPlacements'), async (req, res) => {
+  app.get('/api/placements', authMiddleware, requirePermission('canViewPlacements'), async (req, res) => {
     try {
       const { volunteerId, positionId, status } = req.query;
       const placements = await storage.getPlacements({
@@ -369,7 +377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/placements', isAuthenticated, requirePermission('canManagePlacements'), async (req, res) => {
+  app.post('/api/placements', authMiddleware, requirePermission('canManagePlacements'), async (req, res) => {
     try {
       const validatedData = insertPlacementSchema.parse(req.body);
       const placement = await storage.createPlacement(validatedData);
@@ -383,7 +391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/placements/:id', isAuthenticated, async (req, res) => {
+  app.patch('/api/placements/:id', authMiddleware, async (req, res) => {
     try {
       const validatedData = insertPlacementSchema.partial().parse(req.body);
       const placement = await storage.updatePlacement(req.params.id, validatedData);

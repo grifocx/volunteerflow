@@ -94,3 +94,23 @@ Preferred communication style: Simple, everyday language.
 - medical_screening_details (sensitive medical data)
 - placements (volunteer placement records)
 - activities (audit trail and activity logging)
+
+### Development Authentication System (August 15, 2025)
+- ✓ Development authentication mode implemented for easy role testing
+- ✓ Four test user accounts with different roles available for testing
+- ✓ Switch between users without needing multiple Replit accounts
+- ✓ Development-only feature that doesn't affect production authentication
+- ✓ Landing page automatically shows development login interface in dev mode
+
+**Available Test Users:**
+- Sarah Johnson (recruiter@volunteerflow.org) - Recruiter role
+- Michael Chen (placement@volunteerflow.org) - Placement Officer role  
+- Dr. Emily Rodriguez (medical@volunteerflow.org) - Medical Screener role
+- James Okoye (country@volunteerflow.org) - Country Officer role
+
+**How to Test:**
+1. Visit the application in development mode
+2. Select any test user from the development login interface
+3. Click "Login" to authenticate as that user
+4. Test role-based permissions and features
+5. Switch users anytime by refreshing and selecting a different user

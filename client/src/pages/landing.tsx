@@ -1,11 +1,19 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Globe, Heart, ArrowRight } from "lucide-react";
+import { DevLogin } from "@/components/DevLogin";
 
 export default function Landing() {
+  const isDevelopment = import.meta.env.DEV;
+  
   const handleLogin = () => {
     window.location.href = "/api/login";
   };
+
+  // Show development login in development mode
+  if (isDevelopment) {
+    return <DevLogin />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
