@@ -47,8 +47,8 @@ export function setupDevAuth(app: Express) {
       return res.status(400).json({ message: "Invalid user ID" });
     }
 
-    // Simulate authentication by setting session data
-    (req as any).user = {
+    // Store user data in session
+    (req.session as any).devUser = {
       claims: {
         sub: user.id,
         email: user.email,
@@ -58,9 +58,6 @@ export function setupDevAuth(app: Express) {
       },
       expires_at: Math.floor(Date.now() / 1000) + 3600 // 1 hour from now
     };
-
-    // Mark as authenticated
-    (req as any).isAuthenticated = () => true;
 
     res.json({ 
       message: "Logged in successfully",
@@ -87,8 +84,7 @@ export function setupDevAuth(app: Express) {
 
   // Development logout
   app.post('/api/dev/logout', (req, res) => {
-    (req as any).user = null;
-    (req as any).isAuthenticated = () => false;
+    delete (req.session as any).devUser;
     res.json({ message: "Logged out successfully" });
   });
 }
@@ -96,11 +92,13 @@ export function setupDevAuth(app: Express) {
 // Development authentication middleware - checks session or allows dev users
 export const isAuthenticatedDev: RequestHandler = async (req, res, next) => {
   // Check if this is a development user session
-  const user = (req as any).user;
+  const devUser = (req.session as any).devUser;
   
-  if (user && user.expires_at) {
+  if (devUser && devUser.expires_at) {
     const now = Math.floor(Date.now() / 1000);
-    if (now <= user.expires_at) {
+    if (now <= devUser.expires_at) {
+      // Set user object for downstream middleware
+      (req as any).user = devUser;
       return next();
     }
   }
