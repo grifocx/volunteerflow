@@ -40,10 +40,13 @@ export function DevLogin() {
       return response.json();
     },
     onSuccess: () => {
-      // Invalidate user query to refresh authentication state
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
-      // Refresh the page to update auth state
-      window.location.reload();
+      // Small delay to ensure session is saved before checking auth
+      setTimeout(() => {
+        // Invalidate user query to refresh authentication state
+        queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+        // Refresh the page to update auth state
+        window.location.reload();
+      }, 100);
     },
     onError: () => {
       setLoggingInUserId(null);
