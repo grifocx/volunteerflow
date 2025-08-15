@@ -203,7 +203,7 @@ export class DatabaseStorage implements IStorage {
       
       if (row.applications) {
         const existing = volunteerMap.get(volunteer.id);
-        if (!existing.applications.find((app: any) => app.id === row.applications.id)) {
+        if (existing && !existing.applications.find((app: any) => app.id === row.applications!.id)) {
           existing.applications.push({
             ...row.applications,
             position: row.positions,
@@ -213,7 +213,7 @@ export class DatabaseStorage implements IStorage {
       
       if (row.medical_screenings) {
         const existing = volunteerMap.get(volunteer.id);
-        if (!existing.medicalScreenings.find((ms: any) => ms.id === row.medical_screenings.id)) {
+        if (existing && !existing.medicalScreenings.find((ms: any) => ms.id === row.medical_screenings!.id)) {
           existing.medicalScreenings.push(row.medical_screenings);
         }
       }
@@ -258,7 +258,7 @@ export class DatabaseStorage implements IStorage {
       .delete(volunteers)
       .where(eq(volunteers.id, id));
     
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Position operations
@@ -319,7 +319,7 @@ export class DatabaseStorage implements IStorage {
       
       if (row.applications) {
         const existing = positionMap.get(position.id);
-        if (!existing.applications.find((app: any) => app.id === row.applications.id)) {
+        if (existing && !existing.applications.find((app: any) => app.id === row.applications!.id)) {
           existing.applications.push(row.applications);
         }
       }
@@ -363,7 +363,7 @@ export class DatabaseStorage implements IStorage {
       .delete(positions)
       .where(eq(positions.id, id));
     
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Application operations
@@ -404,9 +404,9 @@ export class DatabaseStorage implements IStorage {
       .offset(filters.offset || 0);
 
     return result.map(row => ({
-      ...row.applications,
-      volunteer: row.volunteers,
-      position: row.positions,
+      ...row.applications!,
+      volunteer: row.volunteers || undefined,
+      position: row.positions || undefined,
     }));
   }
 
@@ -447,7 +447,7 @@ export class DatabaseStorage implements IStorage {
       .delete(applications)
       .where(eq(applications.id, id));
     
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Medical screening operations
@@ -470,13 +470,14 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(medicalScreenings.expiresAt, filters.expiringBefore));
     }
 
-    let query = db.select().from(medicalScreenings);
-    
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await db.select().from(medicalScreenings)
+        .where(and(...conditions))
+        .orderBy(desc(medicalScreenings.createdAt));
     }
 
-    return await query.orderBy(desc(medicalScreenings.createdAt));
+    return await db.select().from(medicalScreenings)
+      .orderBy(desc(medicalScreenings.createdAt));
   }
 
   async getMedicalScreening(id: string): Promise<MedicalScreening | undefined> {
@@ -556,13 +557,14 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(placements.status, filters.status));
     }
 
-    let query = db.select().from(placements);
-    
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await db.select().from(placements)
+        .where(and(...conditions))
+        .orderBy(desc(placements.createdAt));
     }
 
-    return await query.orderBy(desc(placements.createdAt));
+    return await db.select().from(placements)
+      .orderBy(desc(placements.createdAt));
   }
 
   async getPlacement(id: string): Promise<Placement | undefined> {
@@ -614,13 +616,14 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(activities.applicationId, filters.applicationId));
     }
 
-    let query = db.select().from(activities);
-    
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await db.select().from(activities)
+        .where(and(...conditions))
+        .orderBy(desc(activities.createdAt))
+        .limit(filters.limit || 20);
     }
 
-    return await query
+    return await db.select().from(activities)
       .orderBy(desc(activities.createdAt))
       .limit(filters.limit || 20);
   }
