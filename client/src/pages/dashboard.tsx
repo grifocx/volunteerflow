@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
+import RoleDashboard from "@/components/common/role-dashboard";
 import MetricsCards from "@/components/dashboard/metrics-cards";
 import PipelineFunnel from "@/components/dashboard/pipeline-funnel";
 import RecentActivity from "@/components/dashboard/recent-activity";
@@ -62,20 +63,9 @@ export default function Dashboard() {
         <Header title="Dashboard" />
         
         <main className="flex-1 overflow-y-auto p-6" data-testid="main-dashboard">
-          {/* Key Metrics */}
+          {/* Role-Based Dashboard */}
           <div className="mb-8">
-            {metricsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="bg-white dark:bg-card rounded-lg shadow p-6 animate-pulse">
-                    <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded mb-4"></div>
-                    <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <MetricsCards metrics={metrics as any} />
-            )}
+            <RoleDashboard />
           </div>
 
           {/* Pipeline Overview & Recent Activity */}

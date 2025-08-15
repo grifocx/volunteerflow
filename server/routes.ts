@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { requirePermission, requireRole } from "./rbacMiddleware";
 import {
   insertVolunteerSchema,
   insertPositionSchema,
@@ -58,8 +59,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Volunteer routes
-  app.get('/api/volunteers', isAuthenticated, async (req, res) => {
+  // Volunteer routes - restricted by permissions
+  app.get('/api/volunteers', isAuthenticated, requirePermission('canViewLeads'), async (req, res) => {
     try {
       const { status, search, limit, offset } = req.query;
       const volunteers = await storage.getVolunteers({
@@ -88,7 +89,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/volunteers', isAuthenticated, async (req, res) => {
+  app.post('/api/volunteers', isAuthenticated, requirePermission('canManageLeads'), async (req, res) => {
     try {
       const validatedData = insertVolunteerSchema.parse(req.body);
       const volunteer = await storage.createVolunteer(validatedData);
@@ -129,8 +130,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Position routes
-  app.get('/api/positions', isAuthenticated, async (req, res) => {
+  // Position routes - restricted by permissions
+  app.get('/api/positions', isAuthenticated, requirePermission('canViewPositions'), async (req, res) => {
     try {
       const { sector, country, isOpen, search, limit, offset } = req.query;
       const positions = await storage.getPositions({
@@ -161,7 +162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/positions', isAuthenticated, async (req, res) => {
+  app.post('/api/positions', isAuthenticated, requirePermission('canManagePositions'), async (req, res) => {
     try {
       const validatedData = insertPositionSchema.parse(req.body);
       
@@ -210,8 +211,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Application routes
-  app.get('/api/applications', isAuthenticated, async (req, res) => {
+  // Application routes - restricted by permissions
+  app.get('/api/applications', isAuthenticated, requirePermission('canViewApplications'), async (req, res) => {
     try {
       const { volunteerId, positionId, status, limit, offset } = req.query;
       const applications = await storage.getApplications({
@@ -241,7 +242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/applications', isAuthenticated, async (req, res) => {
+  app.post('/api/applications', isAuthenticated, requirePermission('canManageApplications'), async (req, res) => {
     try {
       const validatedData = insertApplicationSchema.parse(req.body);
       const application = await storage.createApplication(validatedData);
@@ -269,8 +270,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Medical screening routes
-  app.get('/api/medical-screenings', isAuthenticated, async (req, res) => {
+  // Medical screening routes - restricted by permissions
+  app.get('/api/medical-screenings', isAuthenticated, requirePermission('canViewMedicalScreenings'), async (req, res) => {
     try {
       const { volunteerId, status } = req.query;
       const screenings = await storage.getMedicalScreenings({
@@ -297,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/medical-screenings', isAuthenticated, async (req, res) => {
+  app.post('/api/medical-screenings', isAuthenticated, requirePermission('canManageMedicalScreenings'), async (req, res) => {
     try {
       const validatedData = insertMedicalScreeningSchema.parse(req.body);
       const screening = await storage.createMedicalScreening(validatedData);
@@ -325,8 +326,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Placement routes
-  app.get('/api/placements', isAuthenticated, async (req, res) => {
+  // Medical screening details routes - highly restricted (Medical Screeners only)
+  app.get('/api/medical-screenings/:id/details', isAuthenticated, requirePermission('canViewMedicalDetails'), async (req, res) => {
+    try {
+      const details = await storage.getMedicalScreeningDetails(req.params.id);
+      if (!details) {
+        return res.status(404).json({ message: "Medical screening details not found" });
+      }
+      res.json(details);
+    } catch (error) {
+      console.error("Error fetching medical screening details:", error);
+      res.status(500).json({ message: "Failed to fetch medical screening details" });
+    }
+  });
+
+  app.post('/api/medical-screenings/:id/details', isAuthenticated, requireRole('medical_screener'), async (req, res) => {
+    try {
+      const details = await storage.createMedicalScreeningDetails({
+        ...req.body,
+        medicalScreeningId: req.params.id
+      });
+      res.status(201).json(details);
+    } catch (error) {
+      console.error("Error creating medical screening details:", error);
+      res.status(500).json({ message: "Failed to create medical screening details" });
+    }
+  });
+
+  // Placement routes - restricted by permissions
+  app.get('/api/placements', isAuthenticated, requirePermission('canViewPlacements'), async (req, res) => {
     try {
       const { volunteerId, positionId, status } = req.query;
       const placements = await storage.getPlacements({
@@ -341,7 +369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/placements', isAuthenticated, async (req, res) => {
+  app.post('/api/placements', isAuthenticated, requirePermission('canManagePlacements'), async (req, res) => {
     try {
       const validatedData = insertPlacementSchema.parse(req.body);
       const placement = await storage.createPlacement(validatedData);

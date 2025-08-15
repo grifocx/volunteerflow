@@ -1,101 +1,153 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { isUnauthorizedError } from "@/lib/authUtils";
+import { hasPermission, type UserRole } from "@/lib/rbac";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
+import RoleGuard from "@/components/common/role-guard";
+import MedicalScreeningCard from "@/components/medical/medical-screening-card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Plus, User, Calendar, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
-import type { MedicalScreening } from "@shared/schema";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Plus, Search, Filter, Eye, FileText, AlertTriangle, CheckCircle, Clock, XCircle, ShieldAlert } from "lucide-react";
+import { formatDate } from "date-fns";
+import type { MedicalScreening, MedicalScreeningDetails } from "@shared/schema";
 
-const MEDICAL_STATUS_OPTIONS = [
-  { value: 'not_started', label: 'Not Started' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'expired', label: 'Expired' },
-  { value: 'failed', label: 'Failed' },
-];
-
+/**
+ * Medical Screening Management Page following SRP and role-based access control
+ * Single responsibility: Manage medical screenings with role-appropriate data access
+ */
 export default function MedicalScreening() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [selectedScreening, setSelectedScreening] = useState<MedicalScreening | null>(null);
   const { toast } = useToast();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const queryClient = useQueryClient();
+  
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedScreening, setSelectedScreening] = useState<MedicalScreening | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
 
-  const { data: screenings, isLoading } = useQuery({
-    queryKey: ["/api/medical-screenings", { status: statusFilter }],
+  // Redirect to login if not authenticated (following security patterns)
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      toast({
+        title: "Unauthorized",
+        description: "You are logged out. Logging in again...",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 500);
+      return;
+    }
+  }, [isAuthenticated, isLoading, toast]);
+
+  // Fetch medical screenings with role-based access
+  const { data: screenings, isLoading: screeningsLoading } = useQuery({
+    queryKey: ['/api/medical-screenings', { status: statusFilter, search: searchTerm }],
     retry: false,
+    enabled: isAuthenticated && hasPermission(user, 'canViewMedicalScreenings'),
   });
 
-  const updateScreeningMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<MedicalScreening> }) => {
-      return apiRequest("PATCH", `/api/medical-screenings/${id}`, data);
-    },
+  // Fetch sensitive medical details (Medical Screeners only)
+  const { data: medicalDetails, isLoading: detailsLoading } = useQuery({
+    queryKey: ['/api/medical-screenings', selectedScreening?.id, 'details'],
+    retry: false,
+    enabled: !!selectedScreening && hasPermission(user, 'canViewMedicalDetails'),
+  });
+
+  const createScreeningMutation = useMutation({
+    mutationFn: async (data: any) => await apiRequest('/api/medical-screenings', 'POST', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/medical-screenings"] });
       toast({
         title: "Success",
-        description: "Medical screening updated successfully",
+        description: "Medical screening created successfully",
       });
-      setSelectedScreening(null);
+      queryClient.invalidateQueries({ queryKey: ['/api/medical-screenings'] });
+      setShowCreateDialog(false);
     },
     onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
       toast({
         title: "Error",
-        description: error.message || "Failed to update medical screening",
+        description: "Failed to create medical screening",
         variant: "destructive",
       });
     },
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'not_started':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300';
-      case 'in_progress':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
-      case 'completed':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
-      case 'expired':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
-      case 'failed':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300';
+  const handleViewOutcome = (id: string) => {
+    const screening = (screenings as any)?.find((s: any) => s.id === id);
+    setSelectedScreening(screening);
+    setShowDetailsDialog(true);
+  };
+
+  const handleViewDetails = (id: string) => {
+    if (!hasPermission(user, 'canViewMedicalDetails')) {
+      toast({
+        title: "Access Restricted",
+        description: "Medical details are restricted to Medical Screeners only",
+        variant: "destructive",
+      });
+      return;
     }
+    
+    const screening = (screenings as any)?.find((s: any) => s.id === id);
+    setSelectedScreening(screening);
+    setShowDetailsDialog(true);
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case 'expired':
-      case 'failed':
-        return <XCircle className="w-4 h-4 text-red-600" />;
-      case 'in_progress':
-        return <Clock className="w-4 h-4 text-yellow-600" />;
-      default:
-        return <AlertTriangle className="w-4 h-4 text-gray-600" />;
-    }
-  };
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
-  const formatDate = (dateString: string | null) => {
-    return dateString ? new Date(dateString).toLocaleDateString() : 'Not set';
-  };
-
-  const isExpiringSoon = (expiresAt: string | null) => {
-    if (!expiresAt) return false;
-    const expiry = new Date(expiresAt);
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-    return expiry <= thirtyDaysFromNow;
-  };
+  // Check if user has permission to view medical screenings
+  if (!hasPermission(user, 'canViewMedicalScreenings')) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+        <Sidebar />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <Header title="Medical Screening" />
+          <main className="flex-1 overflow-y-auto p-6">
+            <Card className="max-w-2xl mx-auto mt-12">
+              <CardHeader className="text-center">
+                <ShieldAlert className="w-16 h-16 mx-auto text-red-500 mb-4" />
+                <CardTitle className="text-xl text-red-600">Access Restricted</CardTitle>
+                <CardDescription className="text-base">
+                  Medical screening information requires specific permissions. 
+                  Contact your administrator if you need access.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
@@ -105,296 +157,317 @@ export default function MedicalScreening() {
         <Header title="Medical Screening" />
         
         <main className="flex-1 overflow-y-auto p-6" data-testid="main-medical-screening">
-          {/* Header Actions */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div className="flex flex-col sm:flex-row gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search medical screenings..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                  data-testid="input-search-screenings"
-                />
+          <div className="max-w-7xl mx-auto space-y-6">
+            
+            {/* Page Header with Role-Based Actions */}
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                  Medical Screening Management
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  {user?.role === 'medical_screener' 
+                    ? 'Complete medical evaluations and manage screening details'
+                    : 'View medical screening outcomes and clearance status'
+                  }
+                </p>
               </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                data-testid="select-status-filter"
-              >
-                <option value="">All Status</option>
-                {MEDICAL_STATUS_OPTIONS.map(status => (
-                  <option key={status.value} value={status.value}>
-                    {status.label}
-                  </option>
-                ))}
-              </select>
+              
+              <RoleGuard requiredPermissions={['canManageMedicalScreenings']}>
+                <Button 
+                  onClick={() => setShowCreateDialog(true)}
+                  data-testid="button-create-screening"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Screening
+                </Button>
+              </RoleGuard>
+            </div>
+
+            {/* Filters */}
+            <Card>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="search">Search Volunteers</Label>
+                    <Input
+                      id="search"
+                      placeholder="Search by volunteer ID or name..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      data-testid="input-search"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="status-filter">Status</Label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger data-testid="select-status-filter">
+                        <SelectValue placeholder="All statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">All statuses</SelectItem>
+                        <SelectItem value="not_started">Not Started</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="expired">Expired</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex items-end">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setSearchTerm('');
+                        setStatusFilter('');
+                      }}
+                      data-testid="button-clear-filters"
+                    >
+                      <Filter className="w-4 h-4 mr-2" />
+                      Clear Filters
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Screenings Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {screeningsLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <Card key={i} className="animate-pulse">
+                    <CardHeader>
+                      <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+                        <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (screenings as any)?.length > 0 ? (
+                (screenings as any).map((screening: any) => (
+                  <MedicalScreeningCard
+                    key={screening.id}
+                    screening={screening}
+                    onViewDetails={handleViewDetails}
+                    onViewOutcome={handleViewOutcome}
+                  />
+                ))
+              ) : (
+                <Card className="col-span-full">
+                  <CardContent className="text-center py-12">
+                    <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                      No medical screenings found
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                      {statusFilter || searchTerm 
+                        ? 'Try adjusting your filters to see more results.'
+                        : 'Get started by creating a new medical screening.'
+                      }
+                    </p>
+                    <RoleGuard requiredPermissions={['canManageMedicalScreenings']}>
+                      <Button onClick={() => setShowCreateDialog(true)}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create First Screening
+                      </Button>
+                    </RoleGuard>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
+        </main>
+      </div>
 
-          {/* Medical Screenings Grid */}
-          {isLoading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardHeader>
-                    <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+      {/* Create Screening Dialog - Medical Screeners Only */}
+      <RoleGuard requiredPermissions={['canManageMedicalScreenings']}>
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Create New Medical Screening</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="volunteer-select">Select Volunteer</Label>
+                <Input
+                  id="volunteer-select"
+                  placeholder="Enter volunteer ID or search..."
+                  data-testid="input-volunteer-select"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="screening-type">Screening Type</Label>
+                <Select>
+                  <SelectTrigger data-testid="select-screening-type">
+                    <SelectValue placeholder="Select screening type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="medical_clearance">Medical Clearance</SelectItem>
+                    <SelectItem value="psychological_evaluation">Psychological Evaluation</SelectItem>
+                    <SelectItem value="fitness_assessment">Fitness Assessment</SelectItem>
+                    <SelectItem value="vaccination_check">Vaccination Check</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="initial-notes">Initial Notes</Label>
+                <Textarea
+                  id="initial-notes"
+                  placeholder="Enter any initial observations or requirements..."
+                  rows={3}
+                  data-testid="textarea-initial-notes"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowCreateDialog(false)}
+                data-testid="button-cancel-create"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => {
+                  // Implementation would create the screening
+                  setShowCreateDialog(false);
+                }}
+                data-testid="button-confirm-create"
+              >
+                Create Screening
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </RoleGuard>
+
+      {/* Screening Details Dialog - Role-Based Content */}
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Medical Screening - {selectedScreening?.id}
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedScreening && (
+            <div className="space-y-6">
+              {/* Basic Information - Available to All Authorized Roles */}
+              <div>
+                <h4 className="font-medium mb-3">Screening Information</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge className="ml-2">
+                      {(selectedScreening.status || 'pending').replace('_', ' ')}
+                    </Badge>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Started:</span>
+                    <span className="ml-2">
+                      {selectedScreening.startedAt 
+                        ? formatDate(new Date(selectedScreening.startedAt), 'MMM dd, yyyy')
+                        : 'Not started'
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Country Restrictions - Visible to Authorized Roles */}
+              {selectedScreening.countryRestrictions && selectedScreening.countryRestrictions.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-3">Country Restrictions</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedScreening.countryRestrictions.map((country: string, index: number) => (
+                      <Badge key={index} variant="secondary">
+                        {country}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sensitive Medical Details - Medical Screeners Only */}
+              <RoleGuard requiredPermissions={['canViewMedicalDetails']}>
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ShieldAlert className="w-5 h-5 text-red-500" />
+                    <h4 className="font-medium text-red-700 dark:text-red-400">
+                      Restricted Medical Information
+                    </h4>
+                  </div>
+                  {detailsLoading ? (
+                    <div className="animate-pulse space-y-2">
                       <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded"></div>
                       <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : screenings && screenings.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {screenings.map((screening: MedicalScreening) => (
-                <Card 
-                  key={screening.id} 
-                  className={`hover:shadow-lg transition-shadow cursor-pointer ${
-                    isExpiringSoon(screening.expiresAt) ? 'border-red-200 dark:border-red-800' : ''
-                  }`}
-                  onClick={() => setSelectedScreening(screening)}
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          {getStatusIcon(screening.status)}
-                          <CardTitle className="text-lg" data-testid={`text-screening-volunteer-${screening.id}`}>
-                            Volunteer ID: {screening.volunteerId.slice(-8)}
-                          </CardTitle>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge 
-                            className={getStatusColor(screening.status)}
-                            data-testid={`badge-screening-status-${screening.id}`}
-                          >
-                            {MEDICAL_STATUS_OPTIONS.find(s => s.value === screening.status)?.label || screening.status}
-                          </Badge>
-                          {isExpiringSoon(screening.expiresAt) && (
-                            <Badge variant="destructive" className="text-xs">
-                              Expiring Soon
-                            </Badge>
-                          )}
-                        </div>
+                  ) : medicalDetails ? (
+                    <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg space-y-3">
+                      <div>
+                        <span className="text-sm font-medium">Medical History:</span>
+                        <p className="text-sm mt-1">{(medicalDetails as any).medicalHistory || 'No history recorded'}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium">Current Medications:</span>
+                        <p className="text-sm mt-1">{(medicalDetails as any).currentMedications || 'None reported'}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium">Screening Notes:</span>
+                        <p className="text-sm mt-1">{(medicalDetails as any).screeningNotes || 'No notes available'}</p>
                       </div>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {screening.startedAt && (
-                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                          <Calendar className="w-4 h-4 mr-2" />
-                          Started: {formatDate(screening.startedAt)}
-                        </div>
-                      )}
-                      
-                      {screening.completedAt && (
-                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Completed: {formatDate(screening.completedAt)}
-                        </div>
-                      )}
-
-                      {screening.expiresAt && (
-                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                          <Clock className="w-4 h-4 mr-2" />
-                          Expires: {formatDate(screening.expiresAt)}
-                        </div>
-                      )}
-
-                      <div className="pt-2 border-t">
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="flex items-center">
-                            <div className={`w-2 h-2 rounded-full mr-1 ${screening.vaccinationsComplete ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                            Vaccinations
-                          </div>
-                          <div className="flex items-center">
-                            <div className={`w-2 h-2 rounded-full mr-1 ${screening.medicalClearance ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                            Medical
-                          </div>
-                          <div className="flex items-center">
-                            <div className={`w-2 h-2 rounded-full mr-1 ${screening.mentalHealthClearance ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                            Mental Health
-                          </div>
-                          <div className="flex items-center">
-                            <div className={`w-2 h-2 rounded-full mr-1 ${screening.backgroundCheck ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                            Background
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <User className="w-12 h-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  No medical screenings found
-                </h3>
-                <p className="text-gray-500 dark:text-gray-400 text-center mb-4">
-                  {searchTerm || statusFilter
-                    ? "Try adjusting your search criteria" 
-                    : "Medical screenings will appear here when volunteers begin the process"
-                  }
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Medical Screening Details Dialog */}
-          <Dialog open={!!selectedScreening} onOpenChange={() => setSelectedScreening(null)}>
-            <DialogContent className="max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>Medical Screening Details</DialogTitle>
-              </DialogHeader>
-              {selectedScreening && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Volunteer ID
-                      </label>
-                      <p className="text-sm text-gray-900 dark:text-gray-100">
-                        {selectedScreening.volunteerId}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Status
-                      </label>
-                      <Badge className={getStatusColor(selectedScreening.status)}>
-                        {MEDICAL_STATUS_OPTIONS.find(s => s.value === selectedScreening.status)?.label || selectedScreening.status}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Started
-                      </label>
-                      <p className="text-sm text-gray-900 dark:text-gray-100">
-                        {formatDate(selectedScreening.startedAt)}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Completed
-                      </label>
-                      <p className="text-sm text-gray-900 dark:text-gray-100">
-                        {formatDate(selectedScreening.completedAt)}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Expires
-                      </label>
-                      <p className="text-sm text-gray-900 dark:text-gray-100">
-                        {formatDate(selectedScreening.expiresAt)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                      Screening Checklist
-                    </label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="vaccinations"
-                          checked={selectedScreening.vaccinationsComplete}
-                          onCheckedChange={(checked) => {
-                            updateScreeningMutation.mutate({
-                              id: selectedScreening.id,
-                              data: { vaccinationsComplete: checked as boolean }
-                            });
-                          }}
-                          data-testid="checkbox-vaccinations"
-                        />
-                        <label htmlFor="vaccinations" className="text-sm">
-                          Vaccinations Complete
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="medical"
-                          checked={selectedScreening.medicalClearance}
-                          onCheckedChange={(checked) => {
-                            updateScreeningMutation.mutate({
-                              id: selectedScreening.id,
-                              data: { medicalClearance: checked as boolean }
-                            });
-                          }}
-                          data-testid="checkbox-medical"
-                        />
-                        <label htmlFor="medical" className="text-sm">
-                          Medical Clearance
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="mental"
-                          checked={selectedScreening.mentalHealthClearance}
-                          onCheckedChange={(checked) => {
-                            updateScreeningMutation.mutate({
-                              id: selectedScreening.id,
-                              data: { mentalHealthClearance: checked as boolean }
-                            });
-                          }}
-                          data-testid="checkbox-mental-health"
-                        />
-                        <label htmlFor="mental" className="text-sm">
-                          Mental Health Clearance
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="background"
-                          checked={selectedScreening.backgroundCheck}
-                          onCheckedChange={(checked) => {
-                            updateScreeningMutation.mutate({
-                              id: selectedScreening.id,
-                              data: { backgroundCheck: checked as boolean }
-                            });
-                          }}
-                          data-testid="checkbox-background"
-                        />
-                        <label htmlFor="background" className="text-sm">
-                          Background Check
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedScreening.medicalNotes && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Medical Notes
-                      </label>
-                      <p className="text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 p-3 rounded">
-                        {selectedScreening.medicalNotes}
-                      </p>
-                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">
+                      No detailed medical information available
+                    </p>
                   )}
                 </div>
-              )}
-            </DialogContent>
-          </Dialog>
-        </main>
-      </div>
+              </RoleGuard>
+
+              {/* Access Restriction Notice for Non-Medical Roles */}
+              <RoleGuard 
+                requiredPermissions={['canViewMedicalScreenings']}
+                requiredRoles={['recruiter', 'placement_officer', 'country_officer']}
+              >
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldAlert className="w-5 h-5 text-orange-500" />
+                    <h4 className="font-medium text-orange-700 dark:text-orange-400">
+                      Access Restricted
+                    </h4>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Detailed medical information is restricted to Medical Screeners only. 
+                    You can view screening outcomes and country clearance status.
+                  </p>
+                </div>
+              </RoleGuard>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowDetailsDialog(false)}
+              data-testid="button-close-details"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
